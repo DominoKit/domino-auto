@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.dominokit</groupId>
+        <artifactId>domino-auto</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>domino-auto-api</artifactId>
+    <packaging>gwt-lib</packaging>
+
+    <name>domino-auto-api</name>
+    <url>https://github.com/DominoKit/domino-auto-api</url>
+    <description>The client side module of domino-auto</description>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>net.ltgt.gwt.maven</groupId>
+                <artifactId>gwt-maven-plugin</artifactId>
+                <configuration>
+                    <moduleName>org.dominokit.auto.Auto</moduleName>
+                    <moduleShortName>dominoauto</moduleShortName>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
