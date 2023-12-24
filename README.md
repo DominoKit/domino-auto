@@ -53,18 +53,24 @@ Or as s processor path in the compiler plugin :
 
 ### Usage
 
-For a service to be utilized by this tool, it must adhere to the `DominoAutoService` marker interface and possess a
-default constructor without arguments. Additionally, these services need to be declared as a `DominoAutoService` service
-within the project's `META-INF`. When a service meets these criteria, you can use the `@DominoAuto` annotation on a
-class or interface to specify the desired service interface. The processor then automatically generates a class that
-aggregates all instances of the specified service.
+Adding the dependencies should be all you need to start using the tool; it will automatically generate service loaders
+for all services defined in the classpath.
+
+The generated service loader class name will follow the convention `[Service name]_ServiceLoader`, and will provide a
+single method `load` that returns a list of that service implementations.
+
+The user can set up a lit of black-listed service to avoid generating service loaders for them, where
+the `javax.annotation.processing.Processor` [The annotation processors] are always black-listed.
+to add a new entry to the black list create a package-info class or any other class and annotate it with `DominoAuto` and specify the list of black-listed service classes.
 
 ### Example
 
 Lets define the desired service interface
 
 ```java
-public interface SampleService extends DominoAutoService {
+package com.dominokit.samples;
+
+public interface SampleService {
   void init();
 }
 ```
@@ -92,7 +98,7 @@ public class BarSampleServiceImpl implements SampleService {
 ```
 The project `META-INF` we register both implementations as services :
 
-Create a file named `org.dominokit.auto.DominoAutoService` under the following path
+Create a file named `com.dominokit.samples.SampleService` under the following path
 `project root folder -> src -> main -> resources -> META-INF -> services`
 
 In the file list the services with the full qualified class name
@@ -100,14 +106,6 @@ In the file list the services with the full qualified class name
 ```java
 com.dominokit.samples.FooSampleServiceImpl
 com.dominokit.samples.BarSampleServiceImpl
-```
-
-Now in the client module from where you need to load the services, you create a class or interface and annotate it with `@DominoAuto`
-
-```java
-@DominoAuto(SampleService.class)
-public interface SampleServiceAuto {
-}
 ```
 
 This will generate the following code :
@@ -126,7 +124,7 @@ public class SampleServiceAuto_ServiceLoader {
 Then we can use it like this :
 
 ```java
-SampleServiceAuto_ServiceLoader.load()
+SampleService_ServiceLoader.load()
               .forEach(SampleService::init);
 ```
 

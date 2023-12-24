@@ -15,4 +15,10 @@
  */
 package org.dominokit.auto;
 
-public interface DominoAutoService {}
+import com.google.auto.service.AutoService;
+
+@AutoService(TestService.class)
+public class TestServiceImpl implements TestService {
+  @Override
+  public void init() {}
+}
