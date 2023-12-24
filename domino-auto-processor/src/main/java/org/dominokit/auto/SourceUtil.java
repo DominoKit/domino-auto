@@ -16,6 +16,9 @@
 package org.dominokit.auto;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.lang.model.element.AnnotationMirror;
@@ -59,6 +62,52 @@ public class SourceUtil {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * Finds a list of type mirrors for classes defined as an annotation parameter.
+   *
+   * <p>For example:
+   *
+   * <pre>
+   * interface &#64;MyAnnotation {
+   *  Class&#60;?&#62;[] myClasses();
+   * }
+   * </pre>
+   *
+   * <p>
+   *
+   * @param element the element
+   * @param annotation the annotation
+   * @param paramName the class parameter name
+   * @return The list of type mirrors for the classes, empty list otherwise
+   */
+  public List<TypeMirror> getClassArrayValueFromAnnotation(
+      Element element, Class<? extends Annotation> annotation, String paramName) {
+
+    List<TypeMirror> values = new ArrayList<>();
+
+    for (AnnotationMirror am : element.getAnnotationMirrors()) {
+      if (env.types()
+          .isSameType(
+              am.getAnnotationType(),
+              env.elements().getTypeElement(annotation.getCanonicalName()).asType())) {
+        for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+            am.getElementValues().entrySet()) {
+          if (paramName.equals(entry.getKey().getSimpleName().toString())) {
+            List<AnnotationValue> classesTypes =
+                (List<AnnotationValue>) entry.getValue().getValue();
+            Iterator<? extends AnnotationValue> iterator = classesTypes.iterator();
+
+            while (iterator.hasNext()) {
+              AnnotationValue next = iterator.next();
+              values.add((TypeMirror) next.getValue());
+            }
+          }
+        }
+      }
+    }
+    return values;
   }
 
   /**
