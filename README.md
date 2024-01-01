@@ -42,13 +42,22 @@ Or as s processor path in the compiler plugin :
 
 ```xml
 
-<annotationProcessorPaths>
-    <path>
-        <groupId>org.dominokit</groupId>
-        <artifactId>domino-auto-processor</artifactId>
-        <version>[version]</version>
-    </path>
-</annotationProcessorPaths>
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <version>3.8.1</version>
+    <configuration>
+        <annotationProcessorPaths>
+            <!-- path to your annotation processor -->
+            <path>
+                <groupId>org.dominokit</groupId>
+                <artifactId>domino-auto-processor</artifactId>
+                <version>[version]</version>
+            </path>
+        </annotationProcessorPaths>
+    </configuration>
+</plugin>
+
 ```
 
 ### Usage
@@ -59,11 +68,46 @@ for all services defined in the classpath.
 The generated service loader class name will follow the convention `[Service name]_ServiceLoader`, and will provide a
 single method `load` that returns a list of that service implementations.
 
-The user can set up a lit of black-listed service to avoid generating service loaders for them, where
-the `javax.annotation.processing.Processor` [The annotation processors] are always black-listed.
-to add a new entry to the black list create a package-info class or any other class and annotate it with `DominoAuto` and specify the list of black-listed service classes.
-
+The user needs to specify a white-list of packages that will be included in the generation, the provided white-list
+represent the package of the implemented service class not the implementations. the white list can be configured using a
+compiler argument `dominoAutoInclude` or using `@DominoAuto` annotation on a type or package-info.
 ### Example
+
+- Make sure the service package is included in the white-list :
+
+```xml
+
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <version>3.8.1</version>
+    <configuration>
+        <annotationProcessorPaths>
+            <!-- path to your annotation processor -->
+            <path>
+                <groupId>org.dominokit</groupId>
+                <artifactId>domino-auto-processor</artifactId>
+                <version>[version]</version>
+            </path>
+        </annotationProcessorPaths>
+        <compilerArgs>
+            <arg>-AdominoAutoInclude=com.dominokit.samples</arg>
+        </compilerArgs>
+    </configuration>
+</plugin>
+```
+
+> Using this method, make sure in case you are building from the ide to setup the compiler arguments in the ide or make
+> the ide delegate the build to maven
+
+or
+
+```java
+@DominoAuto(include = {"com.dominokit.samples"})
+package com.dominokit.samples;
+
+import org.dominokit.auto.DominoAuto;
+```
 
 Lets define the desired service interface
 

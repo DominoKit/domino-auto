@@ -15,6 +15,8 @@
  */
 package org.dominokit.auto;
 
+import static java.util.Objects.nonNull;
+
 import com.google.auto.service.AutoService;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -22,24 +24,26 @@ import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.URL;
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.Resource;
+import io.github.classgraph.ScanResult;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
+import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
@@ -66,67 +70,71 @@ public class DominoAutoProcessor extends AbstractProcessor implements HasProcess
   }
 
   @Override
+  public SourceVersion getSupportedSourceVersion() {
+    return SourceVersion.latestSupported();
+  }
+
+  @Override
   public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
     try {
-      if (roundEnv.processingOver()) {
 
-        Set<? extends Element> dominoAutoElements =
-            roundEnv.getElementsAnnotatedWith(DominoAuto.class);
+      Set<? extends Element> dominoAutoElements =
+          roundEnv.getElementsAnnotatedWith(DominoAuto.class);
 
-        Set<String> blackList = getBlackListedServices(dominoAutoElements);
+      Set<String> includes = new HashSet<>();
+      Set<String> exclude = new HashSet<>();
 
-        Map<String, Set<String>> services = new HashMap<>();
-
-        // Load META-INF/services entries from the classpath
-        ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        Enumeration<URL> resources = loader.getResources("META-INF/services");
-
-        while (resources.hasMoreElements()) {
-          URL url = resources.nextElement();
-
-          try (InputStream is = url.openStream();
-              BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-              if (!blackList.contains(line)) {
-                URL service = loader.getResource("META-INF/services/" + line);
-                assert service != null;
-                try (InputStream serviceStream = service.openStream();
-                    BufferedReader serviceReader =
-                        new BufferedReader(new InputStreamReader(serviceStream))) {
-                  String serviceLine;
-                  while ((serviceLine = serviceReader.readLine()) != null) {
-                    if (!services.containsKey(line)) {
-                      services.put(line, new HashSet<>());
-                    }
-                    services.get(line).add(serviceLine);
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        writeServiceLoaders(services);
+      if (options().containsKey("dominoAutoInclude")) {
+        includes.addAll(
+            Arrays.stream(options().get("dominoAutoInclude").split(","))
+                .collect(Collectors.toSet()));
       }
+
+      if (options().containsKey("dominoAutoExclude")) {
+        exclude.addAll(
+            Arrays.stream(options().get("dominoAutoExclude").split(","))
+                .collect(Collectors.toSet()));
+      }
+
+      dominoAutoElements.forEach(
+          element -> {
+            includes.addAll(Arrays.asList(element.getAnnotation(DominoAuto.class).include()));
+            exclude.addAll(Arrays.asList(element.getAnnotation(DominoAuto.class).exclude()));
+          });
+
+      Map<String, Set<String>> services = new HashMap<>();
+
+      try (ScanResult scanResult =
+          new ClassGraph().acceptPathsNonRecursive("META-INF/services").scan()) {
+        scanResult
+            .getAllResources()
+            .forEachByteArrayThrowingIOException(
+                (Resource res, byte[] content) -> {
+                  String serviceName = res.getPath().replace("META-INF/services/", "");
+
+                  if (includes.stream().anyMatch(serviceName::startsWith)
+                      && exclude.stream().noneMatch(serviceName::startsWith)) {
+                    if (!services.containsKey(serviceName)) {
+                      services.put(serviceName, new HashSet<>());
+                    }
+                    Stream<String> impls = new String(content, StandardCharsets.UTF_8).lines();
+                    impls
+                        .filter(
+                            impl ->
+                                nonNull(impl) && !impl.trim().isEmpty() && !impl.startsWith("#"))
+                        .forEach(
+                            impl -> {
+                              services.get(serviceName).add(impl);
+                            });
+                  }
+                });
+      }
+      writeServiceLoaders(services);
     } catch (Exception ex) {
+      SourceUtil.errorStackTrace(env.getMessager(), ex);
       env.getMessager().printMessage(Diagnostic.Kind.ERROR, "Failed to generate service loaders.");
     }
     return false;
-  }
-
-  private Set<String> getBlackListedServices(Set<? extends Element> dominoAutoElements) {
-    Set<String> blackList = new HashSet<>();
-    blackList.add(Processor.class.getCanonicalName());
-
-    dominoAutoElements.forEach(
-        element ->
-            sourceUtil
-                .getClassArrayValueFromAnnotation(element, DominoAuto.class, "blackList")
-                .forEach(
-                    typeMirror ->
-                        blackList.add(env.getTypeUtils().erasure(typeMirror).toString())));
-    return blackList;
   }
 
   private void writeServiceLoaders(Map<String, Set<String>> services) {
@@ -135,10 +143,13 @@ public class DominoAutoProcessor extends AbstractProcessor implements HasProcess
           CodeBlock.Builder bodyBuilder = CodeBlock.builder();
           bodyBuilder.addStatement(
               "$T<$T> services = new $T()", List.class, ClassName.bestGuess(key), ArrayList.class);
-          impls.forEach(
-              impl -> {
-                bodyBuilder.addStatement("services.add(new $T())", ClassName.bestGuess(impl));
-              });
+          impls.stream()
+              .forEach(
+                  impl -> {
+                    env.getMessager()
+                        .printMessage(Diagnostic.Kind.WARNING, "Adding service entry : " + impl);
+                    bodyBuilder.addStatement("services.add(new $T())", ClassName.bestGuess(impl));
+                  });
 
           bodyBuilder.addStatement("return services");
           TypeSpec classSpec =
@@ -158,12 +169,10 @@ public class DominoAutoProcessor extends AbstractProcessor implements HasProcess
             JavaFile.builder(getPackageName(key), classSpec)
                 .build()
                 .writeTo(processingEnv.getFiler());
-          } catch (IOException e) {
-            processingEnv
-                .getMessager()
+          } catch (Exception e) {
+            messager()
                 .printMessage(
-                    Diagnostic.Kind.ERROR,
-                    "Failed to write service loader for service : [" + key + "]");
+                    Diagnostic.Kind.WARNING, "Failed to write service loader : " + e.getMessage());
           }
         });
   }
@@ -199,5 +208,15 @@ public class DominoAutoProcessor extends AbstractProcessor implements HasProcess
   @Override
   public Messager messager() {
     return env.getMessager();
+  }
+
+  @Override
+  public Filer getFiler() {
+    return env.getFiler();
+  }
+
+  @Override
+  public Map<String, String> options() {
+    return env.getOptions();
   }
 }

@@ -15,6 +15,8 @@
  */
 package org.dominokit.auto;
 
+import java.util.Map;
+import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
@@ -25,4 +27,8 @@ public interface HasProcessorEnv {
   Elements elements();
 
   Messager messager();
+
+  Filer getFiler();
+
+  Map<String, String> options();
 }
