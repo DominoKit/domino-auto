@@ -15,18 +15,22 @@
  */
 package org.dominokit.auto;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import javax.annotation.processing.Messager;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
+import javax.tools.Diagnostic;
 
 public class SourceUtil {
 
@@ -124,5 +128,25 @@ public class SourceUtil {
             env.types()
                 .getDeclaredType(env.elements().getTypeElement(targetClass.getCanonicalName())),
             typeMirror);
+  }
+
+  public static void errorStackTrace(Messager messager, Exception e) {
+    StringWriter out = new StringWriter();
+    e.printStackTrace(new PrintWriter(out));
+    messager.printMessage(
+        Diagnostic.Kind.ERROR, "error while creating source file " + out.getBuffer().toString());
+  }
+
+  public static void warningStackTrace(Messager messager, Exception e) {
+    StringWriter out = new StringWriter();
+    e.printStackTrace(new PrintWriter(out));
+    messager.printMessage(
+        Diagnostic.Kind.WARNING, "error while creating source file " + out.getBuffer().toString());
+  }
+
+  public static String errorStackTrace(Exception e) {
+    StringWriter out = new StringWriter();
+    e.printStackTrace(new PrintWriter(out));
+    return out.getBuffer().toString();
   }
 }
