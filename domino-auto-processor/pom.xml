@@ -86,6 +86,14 @@
                                     <pattern>org.checkerframework</pattern>
                                     <shadedPattern>dominoauto.shaded.org.checkerframework</shadedPattern>
                                 </relocation>
+                                <relocation>
+                                    <pattern>io.github.classgraph</pattern>
+                                    <shadedPattern>dominoauto.shaded.io.github.classgraph</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>nonapi.io.github.classgraph</pattern>
+                                    <shadedPattern>dominoauto.shaded.nonapi.io.github.classgraph</shadedPattern>
+                                </relocation>
                             </relocations>
                             <transformers>
                                 <transformer

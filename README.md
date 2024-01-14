@@ -68,12 +68,12 @@ for all services defined in the classpath.
 The generated service loader class name will follow the convention `[Service name]_ServiceLoader`, and will provide a
 single method `load` that returns a list of that service implementations.
 
-The user needs to specify a white-list of packages that will be included in the generation, the provided white-list
-represent the package of the implemented service class not the implementations. the white list can be configured using a
+The user needs to specify an include list of packages that will be included in the generation, the provided list
+represent the package of the implemented service class not the implementations. the include list can be configured using a
 compiler argument `dominoAutoInclude` or using `@DominoAuto` annotation on a type or package-info.
 ### Example
 
-- Make sure the service package is included in the white-list :
+- Make sure the service package is added to the include parameter of the annotation :
 
 ```xml
 
