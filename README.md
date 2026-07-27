@@ -8,17 +8,38 @@
 <a href="#license"><img src="https://img.shields.io/badge/License-_Apache_2.0-14c398" alt="License"></a>
 ![GWT3/J2CL compatible](https://img.shields.io/badge/GWT3/J2CL-compatible-brightgreen.svg)
 
-## Domino-auto
-=====
-Domino-auto is a simple and lightweight service loader for GWT/J2CL application that uses annotation processor to create
-a loader class that load instances of a specific service class.
+# Domino Auto
 
-#### Dependencies
+Domino Auto is a lightweight, annotation-processor-based service loader for GWT/J2CL applications. It scans
+`META-INF/services` at compile time and generates a strongly typed loader class per service interface, avoiding
+runtime reflection.
 
-- The API dependency
+## Modules
+
+- `domino-auto-api`: Provides the `@DominoAuto` annotation and GWT module.
+- `domino-auto-processor`: Annotation processor that generates service loaders.
+
+## How it works
+
+1. You declare service interfaces and their implementations.
+2. You register implementations via `META-INF/services/<service-interface-FQN>` (standard Java ServiceLoader files).
+3. The annotation processor scans `META-INF/services` at compile time.
+4. For each included service interface, it generates `[ServiceInterface]_ServiceLoader` with a `load()` method that
+   returns a `List` of instantiated implementations.
+
+The processor only generates loaders for services in the include list and not in the exclude list.
+
+## Requirements
+
+- Java 11 (see `maven.compiler.release` in `pom.xml`)
+- Maven build
+- Compatible with GWT3/J2CL
+
+## Installation
+
+Add the API dependency:
 
 ```xml
-
 <dependency>
     <groupId>org.dominokit</groupId>
     <artifactId>domino-auto-api</artifactId>
@@ -26,10 +47,9 @@ a loader class that load instances of a specific service class.
 </dependency>
 ```
 
-- The Processor dependency
+Add the processor dependency (provided scope) or configure it via annotationProcessorPaths:
 
 ```xml
-
 <dependency>
     <groupId>org.dominokit</groupId>
     <artifactId>domino-auto-processor</artifactId>
@@ -38,17 +58,15 @@ a loader class that load instances of a specific service class.
 </dependency>
 ```
 
-Or as s processor path in the compiler plugin :
+Or as a processor path in the compiler plugin:
 
 ```xml
-
 <plugin>
     <groupId>org.apache.maven.plugins</groupId>
     <artifactId>maven-compiler-plugin</artifactId>
     <version>3.8.1</version>
     <configuration>
         <annotationProcessorPaths>
-            <!-- path to your annotation processor -->
             <path>
                 <groupId>org.dominokit</groupId>
                 <artifactId>domino-auto-processor</artifactId>
@@ -57,107 +75,91 @@ Or as s processor path in the compiler plugin :
         </annotationProcessorPaths>
     </configuration>
 </plugin>
-
 ```
 
-### Usage
+## Configuration
 
-Adding the dependencies should be all you need to start using the tool; it will automatically generate service loaders
-for all services defined in the classpath.
+You must specify the packages of service interfaces to include. The include list applies to the service interface
+package, not implementation packages.
 
-The generated service loader class name will follow the convention `[Service name]_ServiceLoader`, and will provide a
-single method `load` that returns a list of that service implementations.
-
-The user needs to specify an include list of packages that will be included in the generation, the provided list
-represent the package of the implemented service class not the implementations. the include list can be configured using a
-compiler argument `dominoAutoInclude` or using `@DominoAuto` annotation on a type or package-info.
-### Example
-
-- Make sure the service package is added to the include parameter of the annotation :
+### Compiler arguments
 
 ```xml
-
-<plugin>
-    <groupId>org.apache.maven.plugins</groupId>
-    <artifactId>maven-compiler-plugin</artifactId>
-    <version>3.8.1</version>
-    <configuration>
-        <annotationProcessorPaths>
-            <!-- path to your annotation processor -->
-            <path>
-                <groupId>org.dominokit</groupId>
-                <artifactId>domino-auto-processor</artifactId>
-                <version>[version]</version>
-            </path>
-        </annotationProcessorPaths>
-        <compilerArgs>
-            <arg>-AdominoAutoInclude=com.dominokit.samples</arg>
-        </compilerArgs>
-    </configuration>
-</plugin>
+<compilerArgs>
+    <arg>-AdominoAutoInclude=com.example.services,org.example.more</arg>
+    <arg>-AdominoAutoExclude=com.example.services.internal</arg>
+</compilerArgs>
 ```
 
-> Using this method, make sure in case you are building from the ide to setup the compiler arguments in the ide or make
-> the ide delegate the build to maven
+The processor resolves `dominoAutoInclude` and `dominoAutoExclude` in this order:
+- JVM system properties, for example `-DdominoAutoInclude=com.example.services`
+- Environment variables, using either `dominoAutoInclude` / `dominoAutoExclude` or `DOMINO_AUTO_INCLUDE` / `DOMINO_AUTO_EXCLUDE`
+- Annotation processor options, for example `-AdominoAutoInclude=...`
 
-or
+### Annotation on a type or package
 
 ```java
-@DominoAuto(include = {"com.dominokit.samples"})
-package com.dominokit.samples;
+@DominoAuto(include = {"com.example.services"}, exclude = {"com.example.services.internal"})
+package com.example.services;
 
 import org.dominokit.auto.DominoAuto;
 ```
 
-Lets define the desired service interface
+Notes:
+- If no include list is provided, no loaders are generated.
+- Exclude entries override includes by package prefix.
+
+## Usage
+
+### 1) Define a service interface
 
 ```java
-package com.dominokit.samples;
+package com.example.services;
 
 public interface SampleService {
   void init();
 }
 ```
 
-The lets have different implementations
+### 2) Implement it
 
 ```java
-package com.dominokit.samples;
+package com.example.services;
 
 public class FooSampleServiceImpl implements SampleService {
-  public void init(){
-    //Do something here
+  public void init() {
+    // Do something here
   }
 }
 
-//-------------
-
-package com.dominokit.samples;
+package com.example.services;
 
 public class BarSampleServiceImpl implements SampleService {
-  public void init(){
-    //Do something here
+  public void init() {
+    // Do something here
   }
 }
 ```
-The project `META-INF` we register both implementations as services :
 
-Create a file named `com.dominokit.samples.SampleService` under the following path
-`project root folder -> src -> main -> resources -> META-INF -> services`
+### 3) Register implementations
 
-In the file list the services with the full qualified class name
+Create `META-INF/services/com.example.services.SampleService` and list implementations:
 
-```java
-com.dominokit.samples.FooSampleServiceImpl
-com.dominokit.samples.BarSampleServiceImpl
+```
+com.example.services.FooSampleServiceImpl
+com.example.services.BarSampleServiceImpl
 ```
 
-This will generate the following code :
+Tip: You can also use `com.google.auto.service.AutoService` on implementations to generate the service files.
+
+### 4) Use the generated loader
+
+The processor generates `SampleService_ServiceLoader`:
 
 ```java
-public class SampleServiceAuto_ServiceLoader {
+public class SampleService_ServiceLoader {
   public static List<SampleService> load() {
-    List<SampleService> services = new ArrayList();
+    List<SampleService> services = new ArrayList<>();
     services.add(new FooSampleServiceImpl());
     services.add(new BarSampleServiceImpl());
     return services;
@@ -165,18 +167,25 @@ public class SampleServiceAuto_ServiceLoader {
 }
 ```
 
-Then we can use it like this :
+Usage:
 
 ```java
 SampleService_ServiceLoader.load()
-              .forEach(SampleService::init);
+    .forEach(SampleService::init);
 ```
 
+## Generated code details
 
+- Naming: `[ServiceInterfaceSimpleName]_ServiceLoader`
+- Package: same as the service interface
+- API: `public static List<ServiceInterface> load()`
 
+## Troubleshooting
 
+- No generated loaders: confirm `dominoAutoInclude` is set or `@DominoAuto` is present on a type or package.
+- Missing implementations: ensure `META-INF/services/<service-interface-FQN>` is on the compile classpath.
+- IDE builds: configure annotation processor arguments in the IDE or delegate build to Maven.
 
+## License
 
-
-
-
+Apache License, Version 2.0. See `LICENSE`.
