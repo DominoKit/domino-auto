@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.processing.AbstractProcessor;
@@ -53,6 +54,9 @@ import javax.tools.Diagnostic;
 
 @AutoService(Processor.class)
 public class DominoAutoProcessor extends AbstractProcessor implements HasProcessorEnv {
+
+  static final String DOMINO_AUTO_INCLUDE = "dominoAutoInclude";
+  static final String DOMINO_AUTO_EXCLUDE = "dominoAutoExclude";
 
   private ProcessingEnvironment env;
   private SourceUtil sourceUtil;
@@ -81,20 +85,8 @@ public class DominoAutoProcessor extends AbstractProcessor implements HasProcess
       Set<? extends Element> dominoAutoElements =
           roundEnv.getElementsAnnotatedWith(DominoAuto.class);
 
-      Set<String> includes = new HashSet<>();
-      Set<String> exclude = new HashSet<>();
-
-      if (options().containsKey("dominoAutoInclude")) {
-        includes.addAll(
-            Arrays.stream(options().get("dominoAutoInclude").split(","))
-                .collect(Collectors.toSet()));
-      }
-
-      if (options().containsKey("dominoAutoExclude")) {
-        exclude.addAll(
-            Arrays.stream(options().get("dominoAutoExclude").split(","))
-                .collect(Collectors.toSet()));
-      }
+      Set<String> includes = new HashSet<>(resolveConfiguredPackages(DOMINO_AUTO_INCLUDE));
+      Set<String> exclude = new HashSet<>(resolveConfiguredPackages(DOMINO_AUTO_EXCLUDE));
 
       dominoAutoElements.forEach(
           element -> {
@@ -152,18 +144,17 @@ public class DominoAutoProcessor extends AbstractProcessor implements HasProcess
                   });
 
           bodyBuilder.addStatement("return services");
-          TypeSpec classSpec =
+          MethodSpec.Builder loaderClassLoadMethod =
+              MethodSpec.methodBuilder("load")
+                  .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                  .returns(
+                      ParameterizedTypeName.get(
+                          ClassName.get(List.class), ClassName.bestGuess(key)));
+          TypeSpec.Builder loaderClassBuilder =
               TypeSpec.classBuilder(getClassName(key) + "_ServiceLoader")
                   .addModifiers(Modifier.PUBLIC)
-                  .addMethod(
-                      MethodSpec.methodBuilder("load")
-                          .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                          .returns(
-                              ParameterizedTypeName.get(
-                                  ClassName.get(List.class), ClassName.bestGuess(key)))
-                          .addCode(bodyBuilder.build())
-                          .build())
-                  .build();
+                  .addMethod(loaderClassLoadMethod.addCode(bodyBuilder.build()).build());
+          TypeSpec classSpec = loaderClassBuilder.build();
 
           try {
             JavaFile.builder(getPackageName(key), classSpec)
@@ -218,5 +209,63 @@ public class DominoAutoProcessor extends AbstractProcessor implements HasProcess
   @Override
   public Map<String, String> options() {
     return env.getOptions();
+  }
+
+  Set<String> resolveConfiguredPackages(String optionName) {
+    return resolveConfiguredPackages(optionName, System::getProperty, System::getenv, options());
+  }
+
+  static Set<String> resolveConfiguredPackages(
+      String optionName,
+      Function<String, String> systemProperties,
+      Function<String, String> environmentVariables,
+      Map<String, String> processorOptions) {
+    String value =
+        firstNonBlankValue(optionName, systemProperties, environmentVariables, processorOptions);
+    if (value == null) {
+      return new HashSet<>();
+    }
+
+    return Arrays.stream(value.split(","))
+        .map(String::trim)
+        .filter(entry -> !entry.isEmpty())
+        .collect(Collectors.toSet());
+  }
+
+  private static String firstNonBlankValue(
+      String optionName,
+      Function<String, String> systemProperties,
+      Function<String, String> environmentVariables,
+      Map<String, String> processorOptions) {
+    String systemPropertyValue = trimToNull(systemProperties.apply(optionName));
+    if (systemPropertyValue != null) {
+      return systemPropertyValue;
+    }
+
+    String environmentValue = trimToNull(environmentVariables.apply(optionName));
+    if (environmentValue != null) {
+      return environmentValue;
+    }
+
+    String normalizedEnvironmentValue =
+        trimToNull(environmentVariables.apply(toEnvironmentVariableName(optionName)));
+    if (normalizedEnvironmentValue != null) {
+      return normalizedEnvironmentValue;
+    }
+
+    return trimToNull(processorOptions.get(optionName));
+  }
+
+  static String toEnvironmentVariableName(String optionName) {
+    return optionName.replaceAll("([a-z])([A-Z])", "$1_$2").toUpperCase();
+  }
+
+  private static String trimToNull(String value) {
+    if (value == null) {
+      return null;
+    }
+
+    String trimmedValue = value.trim();
+    return trimmedValue.isEmpty() ? null : trimmedValue;
   }
 }
